@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+# Test loading of self-signed x509 certificates holding elliptic curve keys.
+# A list of curves to test can be passed as shown below. If a key fails to
+# load because the curve is not supported by the kernel, the script will end.
+# Only the curves supported by openssl will be tried. To check which ones
+# are supported run 'openssl ecparam -list_curves'.
+# By default the following curves will be tested: prime192v1 prime256v1
+#
+# CURVES="prime256v1" ./test-ecc-kernel-keys.sh
+
 # Inject a fault into the certificate's key
 inject_fault_cert() {
   local certfilein="$1"
@@ -29,11 +38,25 @@ inject_fault_cert() {
 }
 
 main() {
-  local certfile id
+  local certfile id tmp curves tmpcurves
 
   keyctl newring test @u
 
-  curves="prime256v1"
+  curves=${CURVES:-prime256v1 prime192v1}
+  for curve in $(echo ${curves}); do
+    tmp=$(openssl ecparam -list_curves | grep -E "\s*${curve}\s*:")
+    if [ -n "${tmp}" ]; then
+      tmpcurves="${tmpcurves} ${curve}"
+    fi
+  done
+  curves=${tmpcurves}
+  if [ -z "${curves}" ]; then
+    echo "No curves to test with. Try one of the following:"
+    openssl ecparam -list_curves
+    exit 1
+  fi
+  echo "Testing with curves: ${curves}"
+
 
   while :; do
     for curve in $(echo ${curves}); do
