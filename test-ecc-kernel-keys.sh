@@ -10,11 +10,11 @@
 # CURVES="prime256v1" ./test-ecc-kernel-keys.sh
 
 # Inject a fault into the certificate's key
-inject_fault_cert() {
+inject_fault_cert_key() {
   local certfilein="$1"
   local certfileout="$2"
 
-  local line offset
+  local line offset hl skip
 
   cp -f "${certfilein}" "${certfileout}"
 
@@ -32,6 +32,35 @@ inject_fault_cert() {
   #sha1sum $certfile
   # inject 3 bytes of bad key data -- it's unlikely this is the same as the original
   printf '\x00\x00\x00' | \
+    dd of="${certfileout}" bs=1 count=3 seek=$((offset+hl+skip)) conv=notrunc status=none
+  #dd if=${certfile} bs=1 count=3 skip=$((offset+hl+skip)) status=none | od -tx1
+  #sha1sum $certfile
+}
+
+# Inject a fault into the certificate's signature
+inject_fault_cert_signature() {
+  local certfilein="$1"
+  local certfileout="$2"
+
+  local line offset hl skip
+
+  cp -f "${certfilein}" "${certfileout}"
+
+  line=$(openssl asn1parse -inform der -in ${certfilein} |
+        grep "BIT STRING" |
+        tail -n1)
+  offset=$(echo "${line}" | cut -d":" -f1)
+
+  # At the offset it looks like this from prime256v1: 03 47 00 30 44 02 20 14
+  # We want to get to the '14'; skip over 5 bytes of header
+  hl=5
+  # go a bit 'into' the key parameters to '14'
+  skip=2
+  # inject 3 bytes of bad key data -- it's unlikely this is valid data
+  #dd if=${certfile} bs=1 count=3 skip=$((offset+hl+skip)) status=none | od -tx1
+  #sha1sum $certfile
+  # inject 3 bytes of bad key data -- it's unlikely this is the same as the original
+  printf '\x01\x23\x45' | \
     dd of="${certfileout}" bs=1 count=3 seek=$((offset+hl+skip)) conv=notrunc status=none
   #dd if=${certfile} bs=1 count=3 skip=$((offset+hl+skip)) status=none | od -tx1
   #sha1sum $certfile
@@ -57,7 +86,6 @@ main() {
   fi
   echo "Testing with curves: ${curves}"
 
-
   while :; do
     for curve in $(echo ${curves}); do
       for hash in sha1 sha224 sha256 sha384 sha512; do
@@ -74,15 +102,22 @@ main() {
 		-outform der \
 		-out ${certfile} 2>/dev/null
 
-
 		exp=0
 		# Every once in a while we inject a fault into the
 		# certificate's key
-		if [ $((RANDOM & 255)) -eq 255 ]; then
-			inject_fault_cert "${certfile}" "${certfile}.bad"
+		case $((RANDOM & 255)) in
+		255)
+			inject_fault_cert_key "${certfile}" "${certfile}.bad"
 			certfile="${certfile}.bad"
 			exp=1
-		fi
+			;;
+		254)
+			inject_fault_cert_signature "${certfile}" "${certfile}.bad"
+			certfile="${certfile}.bad"
+			exp=1
+			;;
+		esac
+
 		id=$(keyctl padd asymmetric testkey %keyring:test < "${certfile}")
 		if [ $? -ne $exp ]; then
 			case "$exp" in
