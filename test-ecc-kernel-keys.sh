@@ -67,7 +67,7 @@ inject_fault_cert_signature() {
 }
 
 main() {
-  local certfile id tmp curves tmpcurves
+  local certfile id tmp curves tmpcurves rc
 
   keyctl newring test @u
 
@@ -104,7 +104,7 @@ main() {
 
 		exp=0
 		# Every once in a while we inject a fault into the
-		# certificate's key
+		# certificate's key or signature
 		case $((RANDOM & 255)) in
 		255)
 			inject_fault_cert_key "${certfile}" "${certfile}.bad"
@@ -119,7 +119,8 @@ main() {
 		esac
 
 		id=$(keyctl padd asymmetric testkey %keyring:test < "${certfile}")
-		if [ $? -ne $exp ]; then
+		rc=$?
+		if [ $rc -ne $exp ]; then
 			case "$exp" in
 			0) echo "Error: Could not load valid certificate!";;
 			1) echo "Error: Succeeded to load invalid certificate!";;
@@ -127,7 +128,10 @@ main() {
 			echo "curve: $curve hash: $hash"
 			exit 1
 		else
-			printf "Good: curve: %10s hash: %-7s keyid: %-10s\n" $curve $hash $id
+			case "$rc" in
+			0) printf "Good: curve: %10s hash: %-7s keyid: %-10s\n" $curve $hash $id;;
+			*) printf "Good: curve: %10s hash: %-7s keyid: %-10s -- bad certificate was rejected\n" $curve $hash $id;;
+			esac
 		fi
       done
     done
