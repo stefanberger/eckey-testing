@@ -71,7 +71,7 @@ main() {
 
   keyctl newring test @u
 
-  curves=${CURVES:-prime256v1 prime192v1}
+  curves=${CURVES:-prime256v1 prime192v1 secp384r1}
   for curve in $(echo ${curves}); do
     tmp=$(openssl ecparam -list_curves | grep -E "\s*${curve}\s*:")
     if [ -n "${tmp}" ]; then
