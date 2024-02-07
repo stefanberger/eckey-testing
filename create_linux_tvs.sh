@@ -2,7 +2,7 @@
 
 # Script to generate Linux test vectors
 
-CURVE="prime256v1"
+CURVE="secp521r1"
 
 for hash in sha1 sha224 sha256 sha384 sha512; do
 	openssl req \
@@ -23,15 +23,16 @@ for hash in sha1 sha224 sha256 sha384 sha512; do
 	#echo $line
 	skip=$(echo $line | cut -d":" -f1)
 	#echo $skip
+	hl=$(echo $line | sed -n 's/.*hl=\s*\([^ ]*\).*/\1/p')-2
 	length=$(echo $line | sed -n 's/.*l=\s*\([^ ]*\).*/\1/p')
 	#echo "l=$length"
 	echo -e "\t.key ="
-	dd bs=1 count=$((length-1)) skip=$((skip+3)) if=cert.der 2>/dev/null |
+	dd bs=1 count=$((length-1)) skip=$((skip+3+hl)) if=cert.der 2>/dev/null |
 		od -tx1 |
 		sed -n "s/^[0-9]\{7\} \(.*\)$/\t\" \1/p" |
 		sed -n "s/ \([0-9a-f]\)/\\\x\1/gp"
 	echo ","
-	echo -e "\t.key_len = ,"
+	echo -e "\t.key_len = $((length-1)),"
 	#openssl asn1parse -in cert.der -inform der
 	line=$(openssl asn1parse -in cert.der -inform der 2>&1|
 		grep id-ecPublicKey -B1 |

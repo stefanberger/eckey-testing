@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# shellcheck disable=SC2059
+
 # Test loading of self-signed x509 certificates holding elliptic curve keys.
 # A list of curves to test can be passed as shown below. If a key fails to
 # load because the curve is not supported by the kernel, the script will end.
@@ -129,9 +131,46 @@ main() {
           exit 1
         else
           case "$rc" in
-          0) printf "Good: curve: %10s hash: %-7s keyid: %-10s\n" "$curve" $hash "$id";;
+          0) printf "Good: curve: %10s hash: %-7s keyid: %-10s" "$curve" $hash "$id";;
           *) printf "Good: curve: %10s hash: %-7s keyid: %-10s -- bad certificate was rejected\n" "$curve" $hash "$id";;
           esac
+        fi
+        if [ -n "${id}" ]; then
+          local sigsz off byte1 byte2
+
+          echo "test" >> raw-in
+          openssl dgst -${hash} -binary raw-in > raw-in.hash
+          openssl pkeyutl -sign -inkey key.pem -in raw-in.hash -out sig.bin
+          if ! keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin hash=${hash} enc=x962; then
+            printf "\n\nSignature verification failed"
+            exit 1
+          fi
+          sigsz=$(stat -c%s sig.bin)
+
+          # Try verification with bad signatures
+          for _ in $(seq 0 19); do
+            cp sig.bin sig.bin.bad
+
+            off=$((RANDOM % (sigsz-1)))
+            # Generate a bad signature by injecting 2 random bytes into the file at some offset
+            byte1=$(printf "%02x" $((RANDOM % 255)))
+            byte2=$(printf "%02x" $((RANDOM % 255)))
+            printf "\x${byte1}\x${byte2}" |
+              dd of=sig.bin.bad bs=1 count=2 seek=$((off)) conv=notrunc status=none
+            if keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin.bad hash=${hash} enc=x962 &>/dev/null; then
+              # Accidentally verified - Must also pass with openssl
+              if ! openssl pkeyutl \
+                     -verify \
+                     -in raw-in.hash \
+                     -sigfile sig.bin.bad \
+                     -pkeyopt digest:${hash} \
+                     -inkey key.pem &>/dev/null; then
+                printf "\n\nBAD: Kernel driver reported successful verification of bad signature"
+                exit 1
+              fi
+            fi
+          done
+          printf " Signature test passed\n"
         fi
       done
     done
