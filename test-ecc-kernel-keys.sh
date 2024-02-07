@@ -71,7 +71,7 @@ main() {
 
   keyctl newring test @u
 
-  curves=${CURVES:-prime256v1 prime192v1 secp384r1}
+  curves=${CURVES:-prime256v1 prime192v1 secp384r1 secp521r1}
   for curve in ${curves}; do
     tmp=$(openssl ecparam -list_curves | grep -E "\s*${curve}\s*:")
     if [ -n "${tmp}" ]; then
@@ -88,7 +88,7 @@ main() {
 
   while :; do
     for curve in ${curves}; do
-      for hash in sha1 sha224 sha256 sha384 sha512; do
+      for hash in sha224 sha256 sha384 sha512; do
         certfile="cert.der"
         openssl req \
                 -x509 \
