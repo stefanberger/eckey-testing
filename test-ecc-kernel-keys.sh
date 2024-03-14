@@ -3,13 +3,29 @@
 # shellcheck disable=SC2059
 
 # Test loading of self-signed x509 certificates holding elliptic curve keys.
-# A list of curves to test can be passed as shown below. If a key fails to
-# load because the curve is not supported by the kernel, the script will end.
-# Only the curves supported by openssl will be tried. To check which ones
-# are supported run 'openssl ecparam -list_curves'.
-# By default the following curves will be tested: prime192v1 prime256v1
+# A list of curves and hashes to test with can be passed as shown below.
+# Only curves supported by openssl and the kernel will be tried. To
+# check which ones are supported by openssl run 'openssl ecparam -list_curves'.
 #
-# CURVES="prime256v1" ./test-ecc-kernel-keys.sh
+# By default the following curves will be tested:
+# - prime192v1
+# - prime256v1
+# - secp384r1
+# - secp521r
+#
+# On hashes supported by openssl and the kernel will be tried. To
+# check which ones are supported by openssl run 'openssl dgst -list'
+#
+# By default the following hashes will be tested:
+# - sha224
+# - sha256
+# - sha384
+# - sha512
+# - sha3-256
+# - sha3-384
+# - sha3-512
+#
+# HASHES="sha256 sha3-256" CURVES="prime256v1" ./test-ecc-kernel-keys.sh
 
 # Inject a fault into the certificate's key
 inject_fault_cert_key() {
