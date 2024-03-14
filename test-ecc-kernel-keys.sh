@@ -100,8 +100,37 @@ get_testable_curves() {
   echo "${tmpcurves}"
 }
 
+get_testable_hashes() {
+  local hashes=$1
+
+  local hash tmp tmphashes
+
+  for hash in ${hashes}; do
+    if echo | openssl dgst "-${hash}" &>/dev/null; then
+      tmphashes="${tmphashes} ${hash}"
+    fi
+  done
+
+  hashes=${tmphashes}
+  tmphashes=""
+  for hash in ${hashes}; do
+    case "${hash}" in
+    sha1|sha224|sha256|sha384|sha512|sha3-224|sha3-256|sha3-384|sha3-512)
+      tmp="${hash}-generic";;
+    *) echo "Internal error: Unknown hash ${hash}" >&2; exit 1;;
+    esac
+    if grep -q "${tmp}" /proc/crypto; then
+      tmphashes="${tmphashes} ${hash}"
+    else
+      echo "${hash} not supported by kernel driver" >&2
+    fi
+  done
+
+  echo "${tmphashes}"
+}
+
 main() {
-  local certfile id curves rc
+  local certfile id curves rc hashes
 
   keyctl newring test @u
 
@@ -114,13 +143,23 @@ main() {
   fi
   echo "Testing with curves: ${curves}"
 
+  # exclude: sha1 (old), sha3-224 (not working with some curves)
+  hashes=${HASHES:-sha224 sha256 sha384 sha512 sha3-256 sha3-384 sha3-512}
+  hashes=$(get_testable_hashes "${hashes}")
+  if [ -z "${hashes}" ]; then
+    echo "No hashes to test with. Try one of the following:"
+    openssl dgst -list
+    exit 1
+  fi
+  echo "Testing with hashes: ${hashes}"
+
   while :; do
     for curve in ${curves}; do
-      for hash in sha224 sha256 sha384 sha512; do
+      for hash in ${hashes}; do
         certfile="cert.der"
         openssl req \
                 -x509 \
-                -${hash} \
+                "-${hash}" \
                 -newkey ec \
                 -pkeyopt "ec_paramgen_curve:${curve}" \
                 -keyout key.pem \
@@ -157,17 +196,17 @@ main() {
           exit 1
         else
           case "$rc" in
-          0) printf "Good: curve: %10s hash: %-7s keyid: %-10s" "$curve" $hash "$id";;
-          *) printf "Good: curve: %10s hash: %-7s keyid: %-10s -- bad certificate was rejected\n" "$curve" $hash "$id";;
+          0) printf "Good: curve: %10s hash: %8s keyid: %-10s" "$curve" "$hash" "$id";;
+          *) printf "Good: curve: %10s hash: %8s keyid: %-10s -- bad certificate was rejected\n" "$curve" "$hash" "$id";;
           esac
         fi
         if [ -n "${id}" ]; then
           local sigsz off byte1 byte2
 
           echo "test" >> raw-in
-          openssl dgst -${hash} -binary raw-in > raw-in.hash
+          openssl dgst "-${hash}" -binary raw-in > raw-in.hash
           openssl pkeyutl -sign -inkey key.pem -in raw-in.hash -out sig.bin
-          if ! keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin hash=${hash} enc=x962; then
+          if ! keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin "hash=${hash}" enc=x962; then
             printf "\n\nSignature verification failed"
             exit 1
           fi
@@ -183,13 +222,13 @@ main() {
             byte2=$(printf "%02x" $((RANDOM % 255)))
             printf "\x${byte1}\x${byte2}" |
               dd of=sig.bin.bad bs=1 count=2 seek=$((off)) conv=notrunc status=none
-            if keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin.bad hash=${hash} enc=x962 &>/dev/null; then
+            if keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin.bad "hash=${hash}" enc=x962 &>/dev/null; then
               # Accidentally verified - Must also pass with openssl
               if ! openssl pkeyutl \
                      -verify \
                      -in raw-in.hash \
                      -sigfile sig.bin.bad \
-                     -pkeyopt digest:${hash} \
+                     -pkeyopt "digest:${hash}" \
                      -inkey key.pem &>/dev/null; then
                 printf "\n\nBAD: Kernel driver reported successful verification of bad signature"
                 exit 1
