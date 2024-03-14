@@ -3,13 +3,29 @@
 # shellcheck disable=SC2059
 
 # Test loading of self-signed x509 certificates holding elliptic curve keys.
-# A list of curves to test can be passed as shown below. If a key fails to
-# load because the curve is not supported by the kernel, the script will end.
-# Only the curves supported by openssl will be tried. To check which ones
-# are supported run 'openssl ecparam -list_curves'.
-# By default the following curves will be tested: prime192v1 prime256v1
+# A list of curves and hashes to test with can be passed as shown below.
+# Only curves supported by openssl and the kernel will be tried. To
+# check which ones are supported by openssl run 'openssl ecparam -list_curves'.
 #
-# CURVES="prime256v1" ./test-ecc-kernel-keys.sh
+# By default the following curves will be tested:
+# - prime192v1
+# - prime256v1
+# - secp384r1
+# - secp521r
+#
+# On hashes supported by openssl and the kernel will be tried. To
+# check which ones are supported by openssl run 'openssl dgst -list'
+#
+# By default the following hashes will be tested:
+# - sha224
+# - sha256
+# - sha384
+# - sha512
+# - sha3-256
+# - sha3-384
+# - sha3-512
+#
+# HASHES="sha256 sha3-256" CURVES="prime256v1" ./test-ecc-kernel-keys.sh
 
 # Inject a fault into the certificate's key
 inject_fault_cert_key() {
@@ -68,12 +84,11 @@ inject_fault_cert_signature() {
   #sha1sum $certfile
 }
 
-main() {
-  local certfile id tmp curves tmpcurves rc
+get_testable_curves() {
+  local curves=$1
 
-  keyctl newring test @u
+  local curve tmp tmpcurves
 
-  curves=${CURVES:-prime256v1 prime192v1 secp384r1 secp521r1}
   for curve in ${curves}; do
     tmp=$(openssl ecparam -list_curves | grep -E "\s*${curve}\s*:")
     if [ -n "${tmp}" ]; then
@@ -89,16 +104,54 @@ main() {
     prime256v1) tmp="ecdsa-nist-p256";;
     secp384r1) tmp="ecdsa-nist-p384";;
     secp521r1) tmp="ecdsa-nist-p521";;
-    *) echo "Internal error: Unknown curve $curve"; exit 1;;
+    *) echo "Internal error: Unknown curve $curve" >&2; exit 1;;
     esac
     if grep -q "${tmp}" /proc/crypto; then
       tmpcurves="${tmpcurves} ${curve}"
     else
-      echo "${curve} not supported by kernel driver"
+      echo "${curve} not supported by kernel driver" >&2
     fi
   done
 
-  curves=${tmpcurves}
+  echo "${tmpcurves}"
+}
+
+get_testable_hashes() {
+  local hashes=$1
+
+  local hash tmp tmphashes
+
+  for hash in ${hashes}; do
+    if echo | openssl dgst "-${hash}" &>/dev/null; then
+      tmphashes="${tmphashes} ${hash}"
+    fi
+  done
+
+  hashes=${tmphashes}
+  tmphashes=""
+  for hash in ${hashes}; do
+    case "${hash}" in
+    sha1|sha224|sha256|sha384|sha512|sha3-224|sha3-256|sha3-384|sha3-512)
+      tmp="${hash}-generic";;
+    *) echo "Internal error: Unknown hash ${hash}" >&2; exit 1;;
+    esac
+    if grep -q "${tmp}" /proc/crypto; then
+      tmphashes="${tmphashes} ${hash}"
+    else
+      echo "${hash} not supported by kernel driver" >&2
+    fi
+  done
+
+  echo "${tmphashes}"
+}
+
+main() {
+  local certfile id curves rc hashes
+
+  keyctl newring test @u
+
+  curves=${CURVES:-prime256v1 prime192v1 secp384r1 secp521r1}
+  curves=$(get_testable_curves "${curves}")
   if [ -z "${curves}" ]; then
     echo "No curves to test with. Try one of the following:"
     openssl ecparam -list_curves
@@ -106,13 +159,23 @@ main() {
   fi
   echo "Testing with curves: ${curves}"
 
+  # exclude: sha1 (old), sha3-224 (not working with some curves)
+  hashes=${HASHES:-sha224 sha256 sha384 sha512 sha3-256 sha3-384 sha3-512}
+  hashes=$(get_testable_hashes "${hashes}")
+  if [ -z "${hashes}" ]; then
+    echo "No hashes to test with. Try one of the following:"
+    openssl dgst -list
+    exit 1
+  fi
+  echo "Testing with hashes: ${hashes}"
+
   while :; do
     for curve in ${curves}; do
-      for hash in sha224 sha256 sha384 sha512; do
+      for hash in ${hashes}; do
         certfile="cert.der"
         openssl req \
                 -x509 \
-                -${hash} \
+                "-${hash}" \
                 -newkey ec \
                 -pkeyopt "ec_paramgen_curve:${curve}" \
                 -keyout key.pem \
@@ -149,17 +212,17 @@ main() {
           exit 1
         else
           case "$rc" in
-          0) printf "Good: curve: %10s hash: %-7s keyid: %-10s" "$curve" $hash "$id";;
-          *) printf "Good: curve: %10s hash: %-7s keyid: %-10s -- bad certificate was rejected\n" "$curve" $hash "$id";;
+          0) printf "Good: curve: %10s hash: %8s keyid: %-10s" "$curve" "$hash" "$id";;
+          *) printf "Good: curve: %10s hash: %8s keyid: %-10s -- bad certificate was rejected\n" "$curve" "$hash" "$id";;
           esac
         fi
         if [ -n "${id}" ]; then
           local sigsz off byte1 byte2
 
           echo "test" >> raw-in
-          openssl dgst -${hash} -binary raw-in > raw-in.hash
+          openssl dgst "-${hash}" -binary raw-in > raw-in.hash
           openssl pkeyutl -sign -inkey key.pem -in raw-in.hash -out sig.bin
-          if ! keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin hash=${hash} enc=x962; then
+          if ! keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin "hash=${hash}" enc=x962; then
             printf "\n\nSignature verification failed"
             exit 1
           fi
@@ -175,13 +238,13 @@ main() {
             byte2=$(printf "%02x" $((RANDOM % 255)))
             printf "\x${byte1}\x${byte2}" |
               dd of=sig.bin.bad bs=1 count=2 seek=$((off)) conv=notrunc status=none
-            if keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin.bad hash=${hash} enc=x962 &>/dev/null; then
+            if keyctl pkey_verify "${id}" 0 raw-in.hash sig.bin.bad "hash=${hash}" enc=x962 &>/dev/null; then
               # Accidentally verified - Must also pass with openssl
               if ! openssl pkeyutl \
                      -verify \
                      -in raw-in.hash \
                      -sigfile sig.bin.bad \
-                     -pkeyopt digest:${hash} \
+                     -pkeyopt "digest:${hash}" \
                      -inkey key.pem &>/dev/null; then
                 printf "\n\nBAD: Kernel driver reported successful verification of bad signature"
                 exit 1
