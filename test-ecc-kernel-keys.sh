@@ -80,6 +80,24 @@ main() {
       tmpcurves="${tmpcurves} ${curve}"
     fi
   done
+
+  curves=${tmpcurves}
+  tmpcurves=""
+  for curve in ${curves}; do
+    case "${curve}" in
+    prime192v1) tmp="ecdsa-nist-p192";;
+    prime256v1) tmp="ecdsa-nist-p256";;
+    secp384r1) tmp="ecdsa-nist-p384";;
+    secp521r1) tmp="ecdsa-nist-p521";;
+    *) echo "Internal error: Unknown curve $curve"; exit 1;;
+    esac
+    if grep -q "${tmp}" /proc/crypto; then
+      tmpcurves="${tmpcurves} ${curve}"
+    else
+      echo "${curve} not supported by kernel driver"
+    fi
+  done
+
   curves=${tmpcurves}
   if [ -z "${curves}" ]; then
     echo "No curves to test with. Try one of the following:"
