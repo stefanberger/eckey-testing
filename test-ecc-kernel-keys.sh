@@ -18,7 +18,7 @@ inject_fault_cert_key() {
 
   cp -f "${certfilein}" "${certfileout}"
 
-  line=$(openssl asn1parse -inform der -in ${certfilein} |
+  line=$(openssl asn1parse -inform der -in "${certfilein}" |
         grep "BIT STRING" |
         head -n1)
   offset=$(echo "${line}" | cut -d":" -f1)
@@ -46,7 +46,7 @@ inject_fault_cert_signature() {
 
   cp -f "${certfilein}" "${certfileout}"
 
-  line=$(openssl asn1parse -inform der -in ${certfilein} |
+  line=$(openssl asn1parse -inform der -in "${certfilein}" |
         grep "BIT STRING" |
         tail -n1)
   offset=$(echo "${line}" | cut -d":" -f1)
@@ -72,7 +72,7 @@ main() {
   keyctl newring test @u
 
   curves=${CURVES:-prime256v1 prime192v1 secp384r1}
-  for curve in $(echo ${curves}); do
+  for curve in ${curves}; do
     tmp=$(openssl ecparam -list_curves | grep -E "\s*${curve}\s*:")
     if [ -n "${tmp}" ]; then
       tmpcurves="${tmpcurves} ${curve}"
@@ -87,20 +87,20 @@ main() {
   echo "Testing with curves: ${curves}"
 
   while :; do
-    for curve in $(echo ${curves}); do
+    for curve in ${curves}; do
       for hash in sha1 sha224 sha256 sha384 sha512; do
         certfile="cert.der"
         openssl req \
-        	-x509 \
-        	-${hash} \
-        	-newkey ec \
-        	-pkeyopt ec_paramgen_curve:${curve} \
-        	-keyout key.pem \
-        	-days 365 \
-        	-subj '/CN=test' \
-        	-nodes \
-        	-outform der \
-        	-out ${certfile} 2>/dev/null
+                -x509 \
+                -${hash} \
+                -newkey ec \
+                -pkeyopt "ec_paramgen_curve:${curve}" \
+                -keyout key.pem \
+                -days 365 \
+                -subj '/CN=test' \
+                -nodes \
+                -outform der \
+                -out "${certfile}" 2>/dev/null
 
         exp=0
         # Every once in a while we inject a fault into the
@@ -129,8 +129,8 @@ main() {
           exit 1
         else
           case "$rc" in
-          0) printf "Good: curve: %10s hash: %-7s keyid: %-10s\n" $curve $hash $id;;
-          *) printf "Good: curve: %10s hash: %-7s keyid: %-10s -- bad certificate was rejected\n" $curve $hash $id;;
+          0) printf "Good: curve: %10s hash: %-7s keyid: %-10s\n" "$curve" $hash "$id";;
+          *) printf "Good: curve: %10s hash: %-7s keyid: %-10s -- bad certificate was rejected\n" "$curve" $hash "$id";;
           esac
         fi
       done
