@@ -148,7 +148,12 @@ get_testable_hashes() {
 main() {
   local certfile id curves rc hashes
 
-  keyctl newring test @u
+  keyctl newring test @u 1>/dev/null
+
+  if ! grep -q -E ": ecdsa-nist-p(192|256|384|521)" /proc/crypto; then
+    echo "Kernel does not support any NIST curves. Try 'sudo modprobe ecdsa_generic'." >&2
+    exit 1
+  fi
 
   curves=${CURVES:-prime256v1 prime192v1 secp384r1 secp521r1}
   curves=$(get_testable_curves "${curves}")
