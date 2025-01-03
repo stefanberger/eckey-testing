@@ -257,6 +257,19 @@ main() {
             fi
           done
           printf " Signature test passed\n"
+
+          # check for fixes introduced by
+          # https://lore.kernel.org/linux-crypto/cover.1735236227.git.lukas@wunner.de/T/#mf161d128e8f7a8498c64e66d69dd666a1385c382
+          if ! keyctl pkey_query "${id}" 0 enc=x962 "hash=${hash}" > pkey_query.out; then
+            printf "\nWarning: pkey_query failed on key\n"
+          else
+            keylen=$(sed -n 's/key_size=//p' pkey_query.out)
+            # keylen is part of the curve name
+            if ! [[ "${curve}" =~ ${keylen} ]]; then
+              printf "\nWarning: Wrong key length indicated by pkey_query on ${curve} for key ${id}: ${keylen}\n"
+            fi
+          fi
+
         fi
       done
     done
