@@ -171,7 +171,7 @@ if [ ! -f eckey-ecdsa.crt.der ]; then
 		-key eckey.pem -out myreq-eckey.pem \
 		-subj '/CN=ecdsa-ca-signed-ec-key' \
 		-reqexts v3_req
-	openssl ca -config ecdsa-ca/ecdsaca.conf \
+	openssl ca -config ecdsa-ca/ecdsaca.conf -md sha256 \
 		-out eckey-ecdsa.pem -infiles myreq-eckey.pem
 	openssl x509 -in eckey-ecdsa.pem -outform der -out eckey-ecdsa.crt.der
 	openssl verify -verbose -CAfile ecdsa-ca/ca.crt eckey-ecdsa.pem
@@ -183,7 +183,7 @@ if [ ! -f eckey-rsa.crt.der ]; then
 		-key eckey.pem -out myreq-rsakey.pem \
 		-subj '/CN=rsa-ca-signed-ec-key' \
 		-reqexts v3_req
-	openssl ca -config rsa-ca/rsaca.conf \
+	openssl ca -config rsa-ca/rsaca.conf -md sha256 \
 		-out eckey-rsa.pem -infiles myreq-rsakey.pem
 	openssl x509 -in eckey-rsa.pem -outform der -out eckey-rsa.crt.der
 	openssl verify -verbose -CAfile rsa-ca/ca.crt eckey-rsa.pem
@@ -201,7 +201,7 @@ if [ ! -f rsakey-ecdsa.crt.der ]; then
 		-key rsakey.pem -out myreq-eckey.pem \
 		-subj '/CN=ecdsa-ca-signed-rsa-key' \
 		-reqexts v3_req
-	openssl ca -config ecdsa-ca/ecdsaca.conf \
+	openssl ca -config ecdsa-ca/ecdsaca.conf -md sha256 \
 		-out rsakey-ecdsa.pem -infiles myreq-eckey.pem
 	openssl x509 -in rsakey-ecdsa.pem -outform der -out rsakey-ecdsa.crt.der
 	openssl verify -verbose -CAfile ecdsa-ca/ca.crt rsakey-ecdsa.pem
@@ -213,7 +213,7 @@ if [ ! -f rsakey-rsa.crt.der ]; then
 		-key rsakey.pem -out myreq-rsakey.pem \
 		-subj '/CN=rsa-ca-signed-rsa-key' \
 		-reqexts v3_req
-	openssl ca -config rsa-ca/rsaca.conf \
+	openssl ca -config rsa-ca/rsaca.conf -md sha256 \
 		-out rsakey-rsa.pem -infiles myreq-rsakey.pem
 	openssl x509 -in rsakey-rsa.pem -outform der -out rsakey-rsa.crt.der
 	openssl verify -verbose -CAfile rsa-ca/ca.crt rsakey-rsa.pem
