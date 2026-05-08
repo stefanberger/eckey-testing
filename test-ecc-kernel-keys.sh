@@ -135,7 +135,7 @@ get_testable_hashes() {
       tmp="${hash}-generic";;
     *) echo "Internal error: Unknown hash ${hash}" >&2; exit 1;;
     esac
-    if grep -q "${tmp}" /proc/crypto; then
+    if grep -q "${tmp}" /proc/crypto || grep -q "${hash}" /proc/crypto; then
       tmphashes="${tmphashes} ${hash}"
     else
       echo "${hash} not supported by kernel driver" >&2
